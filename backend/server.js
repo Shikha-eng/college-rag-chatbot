@@ -43,8 +43,23 @@ app.use(limiter);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static file serving
+// Static file serving (uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Serve built frontend (if exists) from ../frontend/build
+const frontendBuildDir = path.join(__dirname, '..', 'frontend', 'build');
+if (fs.existsSync(frontendBuildDir)) {
+  app.use(express.static(frontendBuildDir));
+  console.log('🗂  Frontend build detected -> serving static assets from', frontendBuildDir);
+  // SPA fallback: for non-API GET requests return index.html
+  app.get(/^(?!\/api\/).*/, (req, res, next) => {
+    const indexFile = path.join(frontendBuildDir, 'index.html');
+    if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+    next();
+  });
+} else {
+  console.log('ℹ️  No frontend build found at', frontendBuildDir, '- skipping static frontend serving');
+}
 
 // Create necessary directories
 const createDirectories = () => {
