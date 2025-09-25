@@ -17,6 +17,22 @@ let dbStatus = DISABLE_DB ? 'disabled' : 'initializing';
 // Initialize Express app
 const app = express();
 
+// Earliest universal CORS header (safety net) BEFORE any other middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // Basic middleware
 // Helmet security headers (we'll supply custom CSP below)
 app.use(helmet({
@@ -284,4 +300,4 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = app;
+module.exports = { app, startServer };
