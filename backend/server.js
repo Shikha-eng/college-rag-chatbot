@@ -16,6 +16,8 @@ let dbStatus = DISABLE_DB ? 'disabled' : 'initializing';
 // Initialize Express app
 const app = express();
 
+app.use(cors({ origin: '*', methods: ['GET','POST','PUT','DELETE','OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
+app.options('*', cors()); // Pre-flight OPTIONS request handler
 // Ultra-permissive CORS (disabled restrictions): allows everything, no credentials
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
