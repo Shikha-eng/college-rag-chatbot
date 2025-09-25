@@ -47,19 +47,9 @@ app.use((req, res, next) => {
 });
 app.use(compression());
 
-// CORS configuration (base)
-const DEPLOYED_FRONTEND = process.env.FRONTEND_PUBLIC_URL || 'https://college-rag-chatbot-7.onrender.com';
-const CORS_ALLOW_ALL = (process.env.CORS_ALLOW_ALL || '').toLowerCase() === 'true';
+// CORS configuration (force allow all)
 app.use(cors({
-  origin: (origin, callback) => {
-    if (CORS_ALLOW_ALL || !origin) return callback(null, true);
-    const list = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || `http://localhost:3000,${DEPLOYED_FRONTEND}`)
-      .split(',')
-      .map(o => o.trim())
-      .filter(Boolean);
-    if (list.includes(origin)) return callback(null, true);
-    return callback(new Error('CORS blocked: ' + origin));
-  },
+  origin: (origin, callback) => callback(null, true),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -67,24 +57,11 @@ app.use(cors({
 
 // Explicit CORS headers (fallback + multi-origin support)
 app.use((req, res, next) => {
-  const allowedOrigins = CORS_ALLOW_ALL
-    ? ['*']
-    : (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || `http://localhost:3000,${DEPLOYED_FRONTEND}`)
-    .split(',')
-    .map(o => o.trim())
-    .filter(Boolean);
   const requestOrigin = req.headers.origin;
-  if (CORS_ALLOW_ALL) {
-    if (requestOrigin) {
-      // echo back origin to allow credentials
-      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-    } else {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    }
-  } else if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
-      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-  } else if (!requestOrigin && allowedOrigins.length === 1) {
-      res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
+  if (requestOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
