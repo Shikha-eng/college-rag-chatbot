@@ -6,17 +6,21 @@ const { authenticate } = require('../middleware/auth');
 const { validateChatMessage } = require('../middleware/validation');
 const router = express.Router();
 
-// Initialize RAG service
-const ragService = new RAGService();
-
-// Initialize the service on first load
-(async () => {
-  try {
-    await ragService.initialize();
-  } catch (error) {
-    console.error('❌ Failed to initialize RAG service:', error);
-  }
-})();
+// Feature flag to disable RAG for lightweight prototype
+const DISABLE_RAG = (process.env.DISABLE_RAG || 'false').toLowerCase() === 'true';
+let ragService = null;
+if (!DISABLE_RAG) {
+  ragService = new RAGService();
+  (async () => {
+    try {
+      await ragService.initialize();
+    } catch (error) {
+      console.error('❌ Failed to initialize RAG service:', error);
+    }
+  })();
+} else {
+  console.log('🛑 RAG disabled via DISABLE_RAG flag. Using canned responses.');
+}
 
 /**
  * @route   POST /api/chat/message
@@ -54,67 +58,84 @@ router.post('/message', authenticate, validateChatMessage, async (req, res) => {
 
     await conversation.save();
 
-    // Process message with RAG service
-    const ragResult = await ragService.processQuestion(message, {
-      userId: userId,
-      language: language,
-      platform: platform,
-      conversationId: conversation._id
-    });
+    let responsePayload;
+    if (DISABLE_RAG) {
+      // Simple canned responses for prototype
+      const lowerMsg = message.toLowerCase();
+      let answer = 'This is a prototype response. The intelligent answer system is disabled.';
+      if (lowerMsg.includes('admission')) answer = 'Admissions typically open in June. (Prototype)';
+      else if (lowerMsg.includes('course')) answer = 'We offer multiple undergraduate courses. (Prototype)';
+      else if (lowerMsg.includes('exam')) answer = 'Mid-sem exams are usually in October. (Prototype)';
+      else if (lowerMsg.includes('sports')) answer = 'Sports activities occur in November. (Prototype)';
 
-    // Add bot response to conversation
-    conversation.addMessage({
-      sender: 'bot',
-      content: {
-        text: ragResult.response,
-        language: ragResult.targetLanguage
-      },
-      ragContext: ragResult.retrievalResults
-    });
-
-    // Handle admin escalation if needed
-    if (ragResult.needsAdminResponse) {
-      conversation.status = 'waiting_admin';
-      
-      // Create admin question
-      const adminQuestion = new AdminQuestion({
-        question: message,
-        questionLanguage: language,
-        detectedLanguage: ragResult.detectedLanguage,
-        
-        userId: userId,
-        platform: platform,
+      responsePayload = {
+        response: answer,
+        confidence: 0,
+        needsAdminResponse: false,
         conversationId: conversation._id,
-        
-        ragContext: {
-          retrievedDocs: ragResult.retrievalResults.retrievedDocs,
-          maxSimilarityScore: ragResult.retrievalResults.maxSimilarity,
-          averageSimilarityScore: ragResult.retrievalResults.averageSimilarity,
-          confidenceThreshold: 0.7,
-          belowThreshold: ragResult.confidence < 0.7
-        },
-        
-        status: 'pending',
-        priority: 'medium',
-        category: 'general'
+        metadata: {
+          detectedLanguage: language,
+          strategy: 'stub',
+          retrievedDocs: 0,
+          ragDisabled: true
+        }
+      };
+
+      conversation.addMessage({
+        sender: 'bot',
+        content: { text: answer, language }
+      });
+      await conversation.save();
+      return res.json(responsePayload);
+    } else {
+      const ragResult = await ragService.processQuestion(message, {
+        userId: userId,
+        language: language,
+        platform: platform,
+        conversationId: conversation._id
       });
 
-      await adminQuestion.save();
-    }
+      conversation.addMessage({
+        sender: 'bot',
+        content: { text: ragResult.response, language: ragResult.targetLanguage },
+        ragContext: ragResult.retrievalResults
+      });
 
-    await conversation.save();
-
-    res.json({
-      response: ragResult.response,
-      confidence: ragResult.confidence,
-      needsAdminResponse: ragResult.needsAdminResponse,
-      conversationId: conversation._id,
-      metadata: {
-        detectedLanguage: ragResult.detectedLanguage,
-        strategy: ragResult.strategy,
-        retrievedDocs: ragResult.retrievalResults.totalResults
+      if (ragResult.needsAdminResponse) {
+        conversation.status = 'waiting_admin';
+        const adminQuestion = new AdminQuestion({
+          question: message,
+          questionLanguage: language,
+          detectedLanguage: ragResult.detectedLanguage,
+          userId: userId,
+          platform: platform,
+          conversationId: conversation._id,
+          ragContext: {
+            retrievedDocs: ragResult.retrievalResults.retrievedDocs,
+            maxSimilarityScore: ragResult.retrievalResults.maxSimilarity,
+            averageSimilarityScore: ragResult.retrievalResults.averageSimilarity,
+            confidenceThreshold: 0.7,
+            belowThreshold: ragResult.confidence < 0.7
+          },
+          status: 'pending',
+          priority: 'medium',
+          category: 'general'
+        });
+        await adminQuestion.save();
       }
-    });
+      await conversation.save();
+      return res.json({
+        response: ragResult.response,
+        confidence: ragResult.confidence,
+        needsAdminResponse: ragResult.needsAdminResponse,
+        conversationId: conversation._id,
+        metadata: {
+          detectedLanguage: ragResult.detectedLanguage,
+          strategy: ragResult.strategy,
+            retrievedDocs: ragResult.retrievalResults.totalResults
+        }
+      });
+    }
 
   } catch (error) {
     console.error('❌ Chat message processing failed:', error);
@@ -306,47 +327,18 @@ router.post('/feedback', authenticate, async (req, res) => {
  */
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const stats = await Conversation.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalConversations: { $sum: 1 },
-          totalMessages: { $sum: '$messageCount' },
-          averageRating: { $avg: '$userSatisfactionRating' },
-          activeConversations: {
-            $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
-          },
-          waitingAdminConversations: {
-            $sum: { $cond: [{ $eq: ['$status', 'waiting_admin'] }, 1, 0] }
-          }
-        }
-      }
-    ]);
-
-    const platformStats = await Conversation.aggregate([
-      {
-        $group: {
-          _id: '$platform',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const languageStats = await Conversation.aggregate([
-      {
-        $group: {
-          _id: '$conversationLanguage',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    res.json({
-      overall: stats[0] || {},
-      byPlatform: platformStats,
-      byLanguage: languageStats,
-      ragServiceStats: ragService.getStats()
-    });
+    if (DISABLE_RAG) {
+      return res.json({
+        overall: {},
+        byPlatform: [],
+        byLanguage: [],
+        ragServiceStats: { disabled: true }
+      });
+    }
+    const stats = await Conversation.aggregate([{ $group: { _id: null, totalConversations: { $sum: 1 }, totalMessages: { $sum: '$messageCount' }, averageRating: { $avg: '$userSatisfactionRating' }, activeConversations: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } }, waitingAdminConversations: { $sum: { $cond: [{ $eq: ['$status', 'waiting_admin'] }, 1, 0] } } } }]);
+    const platformStats = await Conversation.aggregate([{ $group: { _id: '$platform', count: { $sum: 1 } } }]);
+    const languageStats = await Conversation.aggregate([{ $group: { _id: '$conversationLanguage', count: { $sum: 1 } } }]);
+    res.json({ overall: stats[0] || {}, byPlatform: platformStats, byLanguage: languageStats, ragServiceStats: ragService.getStats() });
 
   } catch (error) {
     console.error('❌ Failed to fetch chat stats:', error);

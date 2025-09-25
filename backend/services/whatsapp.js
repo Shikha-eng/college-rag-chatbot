@@ -36,6 +36,19 @@ class WhatsAppService {
     this.messageQueue = new Map();
     this.rateLimitWindow = 60000; // 1 minute
     this.maxMessagesPerWindow = 10;
+
+    // In-memory mode (set DISABLE_DB=true to activate)
+    this.useInMemory = process.env.DISABLE_DB === 'true';
+    if (this.useInMemory) {
+      console.log('⚠️  WhatsAppService running with DISABLE_DB=true (in-memory storage only)');
+      this.memory = {
+        usersByNumber: new Map(),        // whatsappNumber -> user
+        conversationsById: new Map(),    // conversationId -> conversation
+        activeConversationByUser: new Map(), // userId -> conversationId
+        adminQuestions: new Map()        // id -> adminQuestion
+      };
+      this.genId = (p='mem') => `${p}_${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`;
+    }
   }
 
   /**
@@ -113,8 +126,9 @@ class WhatsAppService {
         platform: 'whatsapp',
         whatsappMessageId: MessageSid
       });
-      
-      await conversation.save();
+      if (!this.useInMemory) {
+        await conversation.save();
+      }
 
       // Process the message
       await this.processMessage(messageText, user, conversation, detectedLanguage);
@@ -162,7 +176,6 @@ class WhatsAppService {
           responseGenerated: true
         }
       });
-
       // Update conversation language
       conversation.conversationLanguage = ragResult.targetLanguage;
       
@@ -183,8 +196,9 @@ class WhatsAppService {
         // Send the bot's response
         await this.sendMessage(user.whatsappNumber, ragResult.response);
       }
-
-      await conversation.save();
+      if (!this.useInMemory) {
+        await conversation.save();
+      }
 
     } catch (error) {
       console.error('❌ Failed to process message:', error);
@@ -218,7 +232,11 @@ class WhatsAppService {
       const langCode = lowerText.split(':')[1]?.trim();
       if (langCode && this.languageService.getSupportedLanguages()[langCode]) {
         user.primaryLanguage = langCode;
-        await user.save();
+        if (this.useInMemory) {
+          // no-op save
+        } else {
+          await user.save();
+        }
         
         const confirmMessage = await this.languageService.translate(
           `Language updated to ${langCode}`,
@@ -245,6 +263,41 @@ class WhatsAppService {
    * Create admin question for manual response
    */
   async createAdminQuestion(question, user, conversation, ragResult, language) {
+    if (this.useInMemory) {
+      const _id = this.genId('aq');
+      const adminQuestion = {
+        _id,
+        question,
+        originalQuestion: question,
+        questionLanguage: language,
+        detectedLanguage: ragResult.detectedLanguage,
+        languageConfidence: 0.8,
+        userId: user._id,
+        userWhatsappNumber: user.whatsappNumber,
+        platform: 'whatsapp',
+        conversationId: conversation._id,
+        ragContext: {
+          retrievedDocs: (ragResult.retrievalResults.retrievedDocs || []).map(d => ({
+            score: d.similarity,
+            content: d.content,
+            reason: `Low similarity score: ${d.similarity}`
+          })),
+          searchQuery: question,
+          maxSimilarityScore: ragResult.retrievalResults.maxSimilarity,
+          averageSimilarityScore: ragResult.retrievalResults.averageSimilarity,
+          confidenceThreshold: 0.7,
+          belowThreshold: ragResult.confidence < 0.7
+        },
+        status: 'pending',
+        priority: 'medium',
+        category: 'general',
+        createdAt: new Date()
+      };
+      this.memory.adminQuestions.set(_id, adminQuestion);
+      console.log(`❓ (memory) Created admin question: ${_id}`);
+      return adminQuestion;
+    }
+
     try {
       const adminQuestion = new AdminQuestion({
         question: question,
@@ -318,6 +371,42 @@ class WhatsAppService {
    * Send admin response to user
    */
   async sendAdminResponse(adminQuestionId, response, adminUser) {
+    if (this.useInMemory) {
+      const aq = this.memory.adminQuestions.get(adminQuestionId);
+      if (!aq) throw new Error('Admin question not found');
+      const user = this.memory.usersByNumber.get(aq.userWhatsappNumber);
+      const conversation = this.memory.conversationsById.get(aq.conversationId);
+      const userLanguage = (user && user.primaryLanguage) || aq.questionLanguage || 'english';
+      let finalResponse = response;
+      if (userLanguage !== 'english') {
+        finalResponse = await this.languageService.translate(response, 'english', userLanguage);
+      }
+      await this.sendMessage(user.whatsappNumber, finalResponse);
+      aq.adminResponse = {
+        response,
+        responseLanguage: 'english',
+        translatedResponse: finalResponse,
+        respondedBy: (adminUser && adminUser._id) || 'in_memory_admin',
+        respondedAt: new Date(),
+        responseMethod: 'manual'
+      };
+      aq.status = 'answered';
+      aq.deliveryStatus = {
+        whatsappMessageId: this.genId('msg'),
+        whatsappDeliveryStatus: 'sent',
+        deliveredAt: new Date()
+      };
+      if (conversation) {
+        conversation.addMessage({
+          sender: 'admin',
+          content: { text: finalResponse, language: userLanguage, originalText: response }
+        });
+        conversation.status = 'resolved';
+      }
+      console.log(`✅ (memory) Admin response sent for question: ${adminQuestionId}`);
+      return { messageSid: aq.deliveryStatus.whatsappMessageId, translatedResponse: finalResponse };
+    }
+
     try {
       const adminQuestion = await AdminQuestion.findById(adminQuestionId)
         .populate('userId')
@@ -392,6 +481,25 @@ class WhatsAppService {
    * Find or create user by WhatsApp number
    */
   async findOrCreateUser(whatsappNumber) {
+    if (this.useInMemory) {
+      let user = this.memory.usersByNumber.get(whatsappNumber);
+      if (user) return user;
+      user = {
+        _id: this.genId('usr'),
+        email: `whatsapp_${whatsappNumber.replace('+','')}@temp.college.edu`,
+        password: 'temporary_password_' + Math.random().toString(36).substring(7),
+        name: `WhatsApp User ${whatsappNumber.slice(-4)}`,
+        role: 'student',
+        whatsappNumber,
+        primaryLanguage: 'english',
+        isVerified: false,
+        save: async () => {}
+      };
+      this.memory.usersByNumber.set(whatsappNumber, user);
+      console.log(`👤 (memory) Created new user: ${whatsappNumber}`);
+      return user;
+    }
+
     try {
       // Try to find existing user
       let user = await User.findOne({ whatsappNumber: whatsappNumber });
@@ -427,6 +535,31 @@ class WhatsAppService {
    * Find or create conversation
    */
   async findOrCreateConversation(userId, whatsappNumber) {
+    if (this.useInMemory) {
+      const existingId = this.memory.activeConversationByUser.get(userId);
+      if (existingId) {
+        return this.memory.conversationsById.get(existingId);
+      }
+      const convo = {
+        _id: this.genId('convo'),
+        userId,
+        whatsappNumber,
+        platform: 'whatsapp',
+        sessionId: `whatsapp_${userId}_${Date.now()}`,
+        status: 'active',
+        messages: [],
+        conversationLanguage: 'english',
+        addMessage(msg) {
+          this.messages.push({ ...msg, timestamp: new Date() });
+        },
+        save: async () => {}
+      };
+      this.memory.conversationsById.set(convo._id, convo);
+      this.memory.activeConversationByUser.set(userId, convo._id);
+      console.log(`💬 (memory) Created conversation: ${convo._id}`);
+      return convo;
+    }
+
     try {
       // Try to find active conversation
       let conversation = await Conversation.findOne({
@@ -522,6 +655,18 @@ For urgent matters, contact college administration directly.`;
    * Get status message
    */
   async getStatusMessage(user, language) {
+    if (this.useInMemory) {
+      const pending = [...this.memory.adminQuestions.values()].filter(q =>
+        q.userId === user._id && ['pending','assigned','in_progress'].includes(q.status)
+      ).length;
+      let statusText = `📊 Your Status:
+• Pending questions: ${pending}
+• Language: ${user.primaryLanguage}
+• Account: ${user.isVerified ? 'Verified' : 'Unverified'}`;
+      if (pending > 0) statusText += '\n\nYour questions are being reviewed by college staff.';
+      return await this.languageService.translate(statusText, 'english', language);
+    }
+
     try {
       const pendingQuestions = await AdminQuestion.countDocuments({
         userId: user._id,
@@ -566,3 +711,6 @@ For urgent matters, contact college administration directly.`;
 }
 
 module.exports = WhatsAppService;
+
+// NOTE: The "Cannot find module './backend/routes/user'" error was resolved by creating backend/routes/user.js
+// No code changes needed here.

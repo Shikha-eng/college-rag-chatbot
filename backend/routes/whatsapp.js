@@ -1,19 +1,23 @@
 const express = require('express');
-const WhatsAppService = require('../services/whatsapp');
-const { validateWhatsAppWebhook } = require('../middleware/validation');
 const router = express.Router();
 
-// Initialize WhatsApp service
-const whatsappService = new WhatsAppService();
+// Feature flag to disable WhatsApp entirely
+const DISABLE_WHATSAPP = (process.env.DISABLE_WHATSAPP || 'false').toLowerCase() === 'true';
 
-// Initialize the service on first load
-(async () => {
-  try {
-    await whatsappService.initialize();
-  } catch (error) {
-    console.error('❌ Failed to initialize WhatsApp service:', error);
-  }
-})();
+let whatsappService = null;
+if (!DISABLE_WHATSAPP) {
+  const WhatsAppService = require('../services/whatsapp');
+  whatsappService = new WhatsAppService();
+  (async () => {
+    try {
+      await whatsappService.initialize();
+    } catch (error) {
+      console.error('❌ Failed to initialize WhatsApp service:', error);
+    }
+  })();
+} else {
+  console.log('🛑 Skipping WhatsApp service initialization (DISABLE_WHATSAPP=true)');
+}
 
 /**
  * @route   POST /api/whatsapp/webhook
@@ -21,15 +25,13 @@ const whatsappService = new WhatsAppService();
  * @access  Public (Twilio webhook)
  */
 router.post('/webhook', async (req, res) => {
+  if (DISABLE_WHATSAPP) {
+    return res.status(503).json({ error: 'WhatsApp integration disabled' });
+  }
   try {
     console.log('📨 WhatsApp webhook received:', req.body);
-    
-    // Handle incoming message
     await whatsappService.handleIncomingMessage(req.body);
-    
-    // Respond to Twilio with success
     res.status(200).send('OK');
-
   } catch (error) {
     console.error('❌ WhatsApp webhook error:', error);
     res.status(500).send('Internal Server Error');
@@ -56,28 +58,24 @@ router.get('/webhook', (req, res) => {
  * @access  Private (Admin only)
  */
 router.post('/send-admin-response', async (req, res) => {
+  if (DISABLE_WHATSAPP) {
+    return res.status(503).json({ error: 'WhatsApp integration disabled' });
+  }
   try {
     const { questionId, response } = req.body;
-    
     if (!questionId || !response) {
       return res.status(400).json({
         error: 'Validation failed',
         message: 'Question ID and response are required'
       });
     }
-
-    // Note: In a complete implementation, you'd add authentication middleware here
-    // For now, we'll create a mock admin user
     const mockAdminUser = { _id: 'admin_user_id', name: 'Admin' };
-
     const result = await whatsappService.sendAdminResponse(questionId, response, mockAdminUser);
-
     res.json({
       message: 'Admin response sent successfully',
       messageSid: result.messageSid,
       translatedResponse: result.translatedResponse
     });
-
   } catch (error) {
     console.error('❌ Failed to send admin response:', error);
     res.status(500).json({
@@ -93,24 +91,23 @@ router.post('/send-admin-response', async (req, res) => {
  * @access  Private (Admin only)
  */
 router.post('/send-message', async (req, res) => {
+  if (DISABLE_WHATSAPP) {
+    return res.status(503).json({ error: 'WhatsApp integration disabled' });
+  }
   try {
     const { phoneNumber, message } = req.body;
-    
     if (!phoneNumber || !message) {
       return res.status(400).json({
         error: 'Validation failed',
         message: 'Phone number and message are required'
       });
     }
-
     const result = await whatsappService.sendMessage(phoneNumber, message);
-
     res.json({
       message: 'Message sent successfully',
       messageSid: result.sid,
       status: result.status
     });
-
   } catch (error) {
     console.error('❌ Failed to send message:', error);
     res.status(500).json({
@@ -126,20 +123,15 @@ router.post('/send-message', async (req, res) => {
  * @access  Private (Admin only)
  */
 router.get('/stats', async (req, res) => {
+  if (DISABLE_WHATSAPP) {
+    return res.status(503).json({ error: 'WhatsApp integration disabled' });
+  }
   try {
     const stats = whatsappService.getStats();
-    
-    res.json({
-      stats: stats,
-      timestamp: new Date().toISOString()
-    });
-
+    res.json({ stats, timestamp: new Date().toISOString() });
   } catch (error) {
     console.error('❌ Failed to get WhatsApp stats:', error);
-    res.status(500).json({
-      error: 'Failed to get statistics',
-      message: error.message
-    });
+    res.status(500).json({ error: 'Failed to get statistics', message: error.message });
   }
 });
 
@@ -149,19 +141,15 @@ router.get('/stats', async (req, res) => {
  * @access  Private (Admin only)
  */
 router.post('/clear-queues', async (req, res) => {
+  if (DISABLE_WHATSAPP) {
+    return res.status(503).json({ error: 'WhatsApp integration disabled' });
+  }
   try {
     whatsappService.clearQueues();
-    
-    res.json({
-      message: 'Message queues cleared successfully'
-    });
-
+    res.json({ message: 'Message queues cleared successfully' });
   } catch (error) {
     console.error('❌ Failed to clear queues:', error);
-    res.status(500).json({
-      error: 'Failed to clear queues',
-      message: error.message
-    });
+    res.status(500).json({ error: 'Failed to clear queues', message: error.message });
   }
 });
 
@@ -171,31 +159,24 @@ router.post('/clear-queues', async (req, res) => {
  * @access  Private (Admin only)
  */
 router.get('/test', async (req, res) => {
+  if (DISABLE_WHATSAPP) {
+    return res.status(503).json({ error: 'WhatsApp integration disabled' });
+  }
   try {
-    // Test connection by getting account info
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const fromNumber = process.env.TWILIO_WHATSAPP_NUMBER;
-    
     if (!accountSid || !fromNumber) {
-      return res.status(500).json({
-        error: 'Configuration error',
-        message: 'Twilio credentials not properly configured'
-      });
+      return res.status(500).json({ error: 'Configuration error', message: 'Twilio credentials not properly configured' });
     }
-
     res.json({
       message: 'WhatsApp service is configured correctly',
       accountSid: accountSid.substring(0, 10) + '...',
-      fromNumber: fromNumber,
+      fromNumber,
       serviceStats: whatsappService.getStats()
     });
-
   } catch (error) {
     console.error('❌ WhatsApp service test failed:', error);
-    res.status(500).json({
-      error: 'WhatsApp service test failed',
-      message: error.message
-    });
+    res.status(500).json({ error: 'WhatsApp service test failed', message: error.message });
   }
 });
 

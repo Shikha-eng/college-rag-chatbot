@@ -9,6 +9,12 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
+// Basic metadata
+const { version: APP_VERSION } = require('./package.json');
+const STARTED_AT = Date.now();
+const DISABLE_DB = (process.env.DISABLE_DB || '').toLowerCase() === 'true';
+let dbStatus = DISABLE_DB ? 'disabled' : 'initializing';
+
 // Initialize Express app
 const app = express();
 
@@ -60,28 +66,24 @@ const createDirectories = () => {
 
 // Database connection
 const connectDB = async () => {
+  if (DISABLE_DB) {
+    console.log('⚠️  Database explicitly disabled via DISABLE_DB=true');
+    dbStatus = 'disabled';
+    return;
+  }
   try {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/college-chatbot';
     console.log('Attempting to connect to MongoDB...');
-    
     const conn = await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true,
+      useUnifiedTopology: true
     });
-    
+    dbStatus = 'connected';
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error.message);
-    console.log('📝 Note: Make sure MongoDB is running or check your connection string');
-    console.log('🔧 For local MongoDB: Install and start MongoDB service');
-    console.log('☁️  For MongoDB Atlas: Check your connection string and network access');
-    
-    // Don't exit in development - allow server to start without DB for testing
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    } else {
-      console.log('⚠️  Continuing without database connection (development mode)');
-    }
+    dbStatus = 'error';
+    console.error('❌ MongoDB connection error (continuing without DB):', error.message);
+    console.log('Set DISABLE_DB=true to suppress connection attempts.');
   }
 };
 
@@ -97,19 +99,21 @@ const initializeVectorDB = async () => {
   }
 };
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  const health = {
+// Health endpoints
+function buildHealth() {
+  const mongooseState = mongoose.connection.readyState === 1 ? 'connected' : (dbStatus === 'disabled' ? 'disabled' : dbStatus === 'error' ? 'disconnected' : 'connecting');
+  return {
     status: 'OK',
+    version: APP_VERSION,
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    memory: process.memoryUsage(),
+    uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
+    database: mongooseState,
+    dbDisabled: DISABLE_DB,
     env: process.env.NODE_ENV || 'development'
   };
-  
-  res.status(200).json(health);
-});
+}
+app.get('/health', (req, res) => res.json(buildHealth()));
+app.get('/api/health', (req, res) => res.json(buildHealth()));
 
 // API routes
 app.use('/api/auth', require('./routes/auth'));
@@ -183,24 +187,12 @@ const startServer = async () => {
     const HOST = process.env.HOST || 'localhost';
     
     app.listen(PORT, () => {
-      console.log('\n🚀 College RAG Chatbot Server Started!');
-      console.log(`📍 Server: http://${HOST}:${PORT}`);
-      console.log(`💻 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🌐 CORS Origin: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
-      console.log('\n📋 Available Endpoints:');
-      console.log(`   Health Check: http://${HOST}:${PORT}/health`);
-      console.log(`   API Test: http://${HOST}:${PORT}/api/test`);
-      console.log(`   Authentication: http://${HOST}:${PORT}/api/auth/*`);
-      console.log(`   Chat: http://${HOST}:${PORT}/api/chat/*`);
-      console.log(`   Admin: http://${HOST}:${PORT}/api/admin/*`);
-      console.log('\n🎯 Features Available:');
-      console.log('   ✅ Multilingual Support (6 languages)');
-      console.log('   ✅ RAG Pipeline with Vector Search');
-      console.log('   ✅ WhatsApp Integration');
-      console.log('   ✅ Admin Dashboard');
-      console.log('   ✅ Real-time Chat Interface');
-      console.log('\n📝 Note: Some features require API keys in .env file');
-      console.log('🔧 Check DEPLOYMENT_GUIDE.md for setup instructions');
+      console.log('\n🚀 Backend Server Started');
+      console.log(`📍 http://${HOST}:${PORT}`);
+      console.log(`💻 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🗄️  DB Status: ${buildHealth().database}`);
+      console.log(`🔧 DISABLE_DB=${DISABLE_DB}`);
+      console.log('🔍 Health: /health  |  /api/health');
     });
     
   } catch (error) {
