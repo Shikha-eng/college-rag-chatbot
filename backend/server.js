@@ -3,7 +3,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
-const morgan = require('morgan');
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
@@ -21,7 +20,6 @@ const app = express();
 // Basic middleware
 app.use(helmet());
 app.use(compression());
-app.use(morgan('combined'));
 
 // CORS configuration
 app.use(cors({
