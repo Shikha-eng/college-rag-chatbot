@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const { body, validationResult } = require('express-validator');
 const ScrapingService = require('../services/scraping');
 
 // Initialize scraping service
@@ -39,20 +38,17 @@ router.get('/status', async (req, res) => {
  * @desc Start manual scraping process
  * @access Private (Admin only)
  */
-router.post('/start', [
-  body('urls').optional().isArray().withMessage('URLs must be an array'),
-  body('urls.*').optional().isURL().withMessage('Each URL must be valid'),
-  body('maxDepth').optional().isInt({ min: 1, max: 5 }).withMessage('Max depth must be 1-5')
-], async (req, res) => {
+router.post('/start', async (req, res) => {
   try {
-    // Validate request
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors.array()
-      });
+    const { urls, maxDepth } = req.body || {};
+    if (urls && !Array.isArray(urls)) {
+      return res.status(400).json({ success: false, error: 'urls must be an array' });
+    }
+    if (urls && urls.some(u => typeof u !== 'string' || !/^https?:\/\//i.test(u))) {
+      return res.status(400).json({ success: false, error: 'Each URL must be a valid http(s) URL string' });
+    }
+    if (maxDepth && (isNaN(maxDepth) || maxDepth < 1 || maxDepth > 5)) {
+      return res.status(400).json({ success: false, error: 'maxDepth must be between 1 and 5' });
     }
 
     // Check if already running
@@ -63,8 +59,6 @@ router.post('/start', [
       });
     }
 
-    const { urls, maxDepth } = req.body;
-    
     // Use provided URLs or default ones
     const scrapeUrls = urls || process.env.SCRAPING_URLS?.split(',') || ['https://eng.rizvi.edu.in/'];
     const depth = maxDepth || 2;
@@ -170,20 +164,12 @@ router.delete('/documents/:id', async (req, res) => {
  * @desc Test scraping a single URL (for development)
  * @access Public (for demo)
  */
-router.post('/test', [
-  body('url').isURL().withMessage('Valid URL is required')
-], async (req, res) => {
+router.post('/test', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors.array()
-      });
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ success: false, error: 'Valid URL is required' });
     }
-
-    const { url } = req.body;
     
     const result = await scrapingService.testScrapeUrl(url);
 
