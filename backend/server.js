@@ -47,13 +47,54 @@ app.use((req, res, next) => {
 });
 app.use(compression());
 
-// CORS configuration
+// CORS configuration (base)
+const DEPLOYED_FRONTEND = process.env.FRONTEND_PUBLIC_URL || 'https://college-rag-chatbot-7.onrender.com';
+const CORS_ALLOW_ALL = (process.env.CORS_ALLOW_ALL || '').toLowerCase() === 'true';
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    if (CORS_ALLOW_ALL || !origin) return callback(null, true);
+    const list = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || `http://localhost:3000,${DEPLOYED_FRONTEND}`)
+      .split(',')
+      .map(o => o.trim())
+      .filter(Boolean);
+    if (list.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS blocked: ' + origin));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Explicit CORS headers (fallback + multi-origin support)
+app.use((req, res, next) => {
+  const allowedOrigins = CORS_ALLOW_ALL
+    ? ['*']
+    : (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || `http://localhost:3000,${DEPLOYED_FRONTEND}`)
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+  const requestOrigin = req.headers.origin;
+  if (CORS_ALLOW_ALL) {
+    if (requestOrigin) {
+      // echo back origin to allow credentials
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  } else if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+  } else if (!requestOrigin && allowedOrigins.length === 1) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
+  }
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
