@@ -9,6 +9,8 @@
         button:hover { background: #005a8b; }
         .result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; }
         .urls { background: #f5f5f5; padding: 10px; margin: 10px 0; }
+        .loading { animation: pulse 1s linear infinite alternate; }
+        @keyframes pulse { from { opacity:.6 } to { opacity:1 } }
     </style>
 </head>
 <body>
@@ -43,6 +45,7 @@
             const resultContent = document.getElementById('resultContent');
             
             button.disabled = true;
+            button.classList.add('loading');
             button.textContent = 'Starting scraping...';
             
             const urls = [
@@ -56,15 +59,10 @@
             ];
             
             try {
-                const response = await fetch('http://localhost:5000/api/scrape/start', {
+                const response = await fetch('/api/scrape/start', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        urls: urls,
-                        maxDepth: 2
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls, maxDepth: 2 })
                 });
                 
                 const data = await response.json();
@@ -75,6 +73,7 @@
                     <pre>${JSON.stringify(data, null, 2)}</pre>
                 `;
                 
+                button.classList.remove('loading');
                 button.textContent = 'Scraping Started Successfully!';
                 button.style.background = '#28a745';
                 
@@ -85,6 +84,7 @@
                     <p><strong>Error:</strong> ${error.message}</p>
                 `;
                 
+                button.classList.remove('loading');
                 button.disabled = false;
                 button.textContent = 'Try Again';
                 button.style.background = '#dc3545';
