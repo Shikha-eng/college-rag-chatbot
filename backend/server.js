@@ -18,7 +18,33 @@ let dbStatus = DISABLE_DB ? 'disabled' : 'initializing';
 const app = express();
 
 // Basic middleware
-app.use(helmet());
+// Helmet security headers (we'll supply custom CSP below)
+app.use(helmet({
+  contentSecurityPolicy: false // disable helmet's default CSP so we can define dynamic one
+}));
+// Custom Content Security Policy to permit API calls to backend origin when frontend served statically
+app.use((req, res, next) => {
+  // Allow same-origin resources plus explicit backend API domain for fetch/XHR/WebSocket
+  const backendOrigin = process.env.BACKEND_PUBLIC_URL || 'https://college-rag-chatbot-backend.onrender.com';
+  // Derive websocket equivalent (wss) for connect-src
+  let backendWsOrigin = backendOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+  const connectSrc = ["'self'", backendOrigin, backendWsOrigin].filter((v, i, a) => a.indexOf(v) === i).join(' ');
+  // You can expand img-src/media-src/fonts as needed later
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // CRA build may inline runtime; relax if you tighten later
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    `connect-src ${connectSrc}`,
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'"
+  ].join('; ');
+  res.setHeader('Content-Security-Policy', csp);
+  next();
+});
 app.use(compression());
 
 // CORS configuration
