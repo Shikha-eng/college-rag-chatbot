@@ -1,0 +1,48 @@
+services:
+  # Backend API Service
+  - type: web
+    name: college-rag-chatbot-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: college-rag-mongodb
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://college-rag-chatbot-frontend.onrender.com
+      - key: OPENAI_API_KEY
+        sync: false # Optional - system works without it
+      - key: TWILIO_ACCOUNT_SID
+        sync: false # Optional - WhatsApp integration
+      - key: TWILIO_AUTH_TOKEN
+        sync: false # Optional - WhatsApp integration
+      - key: TWILIO_PHONE_NUMBER
+        sync: false # Optional - WhatsApp integration
+
+  # Frontend React App
+  - type: web
+    name: college-rag-chatbot-frontend
+    env: static
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://college-rag-chatbot-backend.onrender.com
+      - key: REACT_APP_WEBSOCKET_URL
+        value: https://college-rag-chatbot-backend.onrender.com
+
+databases:
+  - name: college-rag-mongodb
+    databaseName: college_rag_chatbot
+    user: admin

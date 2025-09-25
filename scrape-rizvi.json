@@ -1,0 +1,12 @@
+{
+  "urls": [
+    "https://eng.rizvi.edu.in/",
+    "https://eng.rizvi.edu.in/vision-mission/",
+    "https://eng.rizvi.edu.in/departments/",
+    "https://eng.rizvi.edu.in/admission/",
+    "https://eng.rizvi.edu.in/placement/",
+    "https://eng.rizvi.edu.in/events-activities/",
+    "https://eng.rizvi.edu.in/iqac/"
+  ],
+  "maxDepth": 2
+}

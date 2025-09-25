@@ -1,0 +1,54 @@
+{
+  "name": "college-rag-chatbot",
+  "version": "1.0.0",
+  "description": "Multilingual RAG chatbot for college with WhatsApp integration",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "client": "cd frontend && npm start",
+    "server": "nodemon server.js",
+    "build": "cd frontend && npm run build",
+    "scrape": "node scripts/scraper.js",
+    "setup-db": "node scripts/setup-database.js"
+  },
+  "keywords": [
+    "chatbot",
+    "RAG",
+    "multilingual",
+    "whatsapp",
+    "college",
+    "AI"
+  ],
+  "author": "College RAG System",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "axios": "^1.5.0",
+    "cheerio": "^1.0.0-rc.12",
+    "pdf-parse": "^1.1.1",
+    "multer": "^1.4.5-lts.1",
+    "faiss-node": "^0.5.1",
+    "openai": "^4.12.4",
+    "twilio": "^4.15.0",
+    "node-cron": "^3.0.2",
+    "langdetect": "^2.0.0",
+    "google-translate-api-x": "^10.7.1",
+    "@huggingface/inference": "^2.6.4",
+    "sentence-transformers": "^0.0.4",
+    "puppeteer": "^21.1.1",
+    "socket.io": "^4.7.2",
+    "validator": "^13.11.0",
+    "helmet": "^7.0.0",
+    "express-rate-limit": "^6.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "concurrently": "^8.2.1"
+  }
+}

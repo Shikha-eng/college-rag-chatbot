@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Start Rizvi College Scraping</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        button { padding: 10px 20px; background: #007cba; color: white; border: none; cursor: pointer; }
+        button:hover { background: #005a8b; }
+        .result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; }
+        .urls { background: #f5f5f5; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Start Rizvi College Scraping</h1>
+        
+        <div class="urls">
+            <h3>URLs to be scraped:</h3>
+            <ul>
+                <li>https://eng.rizvi.edu.in/</li>
+                <li>https://eng.rizvi.edu.in/vision-mission/</li>
+                <li>https://eng.rizvi.edu.in/departments/</li>
+                <li>https://eng.rizvi.edu.in/admission/</li>
+                <li>https://eng.rizvi.edu.in/placement/</li>
+                <li>https://eng.rizvi.edu.in/events-activities/</li>
+                <li>https://eng.rizvi.edu.in/iqac/</li>
+            </ul>
+        </div>
+        
+        <button onclick="startScraping()">Start Scraping Process</button>
+        
+        <div id="result" class="result" style="display:none;">
+            <h3>Result:</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        async function startScraping() {
+            const button = document.querySelector('button');
+            const result = document.getElementById('result');
+            const resultContent = document.getElementById('resultContent');
+            
+            button.disabled = true;
+            button.textContent = 'Starting scraping...';
+            
+            const urls = [
+                "https://eng.rizvi.edu.in/",
+                "https://eng.rizvi.edu.in/vision-mission/",
+                "https://eng.rizvi.edu.in/departments/",
+                "https://eng.rizvi.edu.in/admission/",
+                "https://eng.rizvi.edu.in/placement/",
+                "https://eng.rizvi.edu.in/events-activities/",
+                "https://eng.rizvi.edu.in/iqac/"
+            ];
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/scrape/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        urls: urls,
+                        maxDepth: 2
+                    })
+                });
+                
+                const data = await response.json();
+                
+                result.style.display = 'block';
+                resultContent.innerHTML = `
+                    <p><strong>Status:</strong> ${response.ok ? '✅ Success' : '❌ Error'}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                button.textContent = 'Scraping Started Successfully!';
+                button.style.background = '#28a745';
+                
+            } catch (error) {
+                result.style.display = 'block';
+                resultContent.innerHTML = `
+                    <p><strong>Status:</strong> ❌ Error</p>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+                
+                button.disabled = false;
+                button.textContent = 'Try Again';
+                button.style.background = '#dc3545';
+            }
+        }
+    </script>
+</body>
+</html>
