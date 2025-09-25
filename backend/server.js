@@ -5,6 +5,7 @@ const compression = require('compression');
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors');
 require('dotenv').config();
 
 // Basic metadata
