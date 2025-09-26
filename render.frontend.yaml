@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: college-rag-chatbot-frontend
+    env: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    autoDeploy: true
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://your-backend.example.com
