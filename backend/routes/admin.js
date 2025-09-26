@@ -5,7 +5,7 @@ const Document = require('../models/Document');
 const User = require('../models/User');
 const WhatsAppService = require('../services/whatsapp');
 const { authenticate, adminOnly } = require('../middleware/auth');
-const { validateAdminResponse, validatePagination } = require('../middleware/validation');
+// Removed validation middleware (prototype mode) - basic checks will be inline
 const router = express.Router();
 
 // Initialize WhatsApp service
@@ -95,7 +95,7 @@ router.get('/dashboard', adminOnly, async (req, res) => {
  * @desc    Get all questions for admin review
  * @access  Private (Admin only)
  */
-router.get('/questions', adminOnly, validatePagination, async (req, res) => {
+router.get('/questions', adminOnly, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, priority, category, search } = req.query;
 
@@ -186,7 +186,7 @@ router.get('/questions/:id', adminOnly, async (req, res) => {
  * @desc    Submit admin response to question
  * @access  Private (Admin only)
  */
-router.post('/questions/:id/response', adminOnly, validateAdminResponse, async (req, res) => {
+router.post('/questions/:id/response', adminOnly, async (req, res) => {
   try {
     const { response, responseLanguage = 'english' } = req.body;
     const questionId = req.params.id;
@@ -381,7 +381,7 @@ router.post('/questions/:id/notes', adminOnly, async (req, res) => {
  * @desc    Get all users for admin management
  * @access  Private (Admin only)
  */
-router.get('/users', adminOnly, validatePagination, async (req, res) => {
+router.get('/users', adminOnly, async (req, res) => {
   try {
     const { page = 1, limit = 20, role, search } = req.query;
 

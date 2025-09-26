@@ -3,7 +3,6 @@ const RAGService = require('../services/rag');
 const Conversation = require('../models/Conversation');
 const AdminQuestion = require('../models/AdminQuestion');
 const { authenticate } = require('../middleware/auth');
-const { validateChatMessage } = require('../middleware/validation');
 const router = express.Router();
 
 // Feature flag to disable RAG for lightweight prototype
@@ -27,7 +26,8 @@ if (!DISABLE_RAG) {
  * @desc    Send message to chatbot
  * @access  Private
  */
-router.post('/message', authenticate, validateChatMessage, async (req, res) => {
+// Validation middleware removed for prototype mode (no-op)
+router.post('/message', authenticate, async (req, res) => {
   try {
     const { message, language = 'english', platform = 'web' } = req.body;
     const userId = req.user._id;
