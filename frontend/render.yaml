@@ -1,0 +1,17 @@
+  # Frontend React App
+  - type: web
+    name: college-rag-chatbot-frontend
+    env: static
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://college-rag-chatbot-backend.onrender.com
+      - key: REACT_APP_WEBSOCKET_URL
+        value: https://college-rag-chatbot-backend.onrender.com
+
+databases:
+  - name: college-rag-mongodb
+    databaseName: college_rag_chatbot
+    user: admin
